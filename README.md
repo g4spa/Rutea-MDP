@@ -1,32 +1,66 @@
-# Landing Page – Negocio Local
+# Rutea MDP
 
-Landing page responsive desarrollada como práctica de Front End, enfocada en estructura HTML semántica, estilos con CSS y diseño adaptable a distintos dispositivos.
+Aplicación PWA para gestionar y optimizar rutas de reparto en Mar del Plata. La base actual usa Next.js 16, React 19, TypeScript estricto, Prisma y Tailwind CSS.
 
-## 🛠️ Tecnologías utilizadas
-- HTML5
-- CSS3
+## Estructura del proyecto
 
-## 🎯 Objetivo del proyecto
-Practicar buenas prácticas de maquetado web, uso correcto de etiquetas semánticas y diseño responsive.
+```text
+.
+├── prisma/
+│   └── schema.prisma
+├── public/
+│   ├── icons/
+│   └── manifest.webmanifest
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── deliveries/route.ts
+│   │   │   ├── geocode/route.ts
+│   │   │   └── routes/optimize/route.ts
+│   │   ├── rutas/[routeId]/page.tsx
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   └── globals.css
+│   ├── lib/
+│   │   ├── db.ts
+│   │   ├── geocoding.ts
+│   │   ├── offline-db.ts
+│   │   ├── routing.ts
+│   │   └── whatsapp.ts
+│   └── types/
+│       ├── domain.ts
+│       └── routing.ts
+├── .env.example
+├── next.config.mjs
+├── postcss.config.mjs
+├── tailwind.config.ts
+├── tsconfig.json
+└── package.json
+```
 
-## 📚 Aprendizajes
-- Estructuración correcta de un sitio web
-- Uso de Flexbox / Grid
-- Diseño mobile first
-- Organización de estilos y clases
+La UI operativa está en `src/app/page.tsx`. El motor de dominio queda aislado en `src/lib`, para poder usar el mismo cálculo desde API Routes y el modo offline.
 
-## 🚀 Demo
-(agregar link cuando lo publiques)
+## Optimización implementada
 
-## 📌 Estado del proyecto
-Completado / En progreso
+- Geocodificación real con Nominatim, restringida a Argentina y Mar del Plata.
+- TSP heurístico con nearest-neighbor y mejora 2-opt.
+- Bucle completo `base → paradas → base`.
+- Ventanas horarias ponderadas en la selección inicial.
+- Cálculo de distancia, tiempo urbano, litros y costo en centavos.
+- Validación de payloads con Zod y límites de seguridad en las API.
+- Cola IndexedDB para mutaciones realizadas sin conexión.
+- Service Worker y manifest para instalación como PWA.
 
-# Landing Page – Cafetería
+Las ventanas horarias se priorizan en esta primera versión. Para garantizar cumplimiento estricto con llegada por horario, el siguiente paso es incorporar un solver VRPTW o una matriz de tiempos de OSRM.
 
-Landing page responsive desarrollada como práctica de Front End, enfocada en estructura HTML semántica, estilos con CSS y diseño adaptable a distintos dispositivos.
+## Primer arranque
 
-1️⃣Initial HTML structure
-2️⃣Add mobile first styles
-3️⃣Add responsive layout with media queries
-4️⃣Improve semantic HTML and accessibility
-5️⃣Add hero image
+```bash
+npm install
+copy .env.example .env
+npm run db:generate
+npm run db:push
+npm run dev
+```
+
+Para producción se reemplaza `DATABASE_URL` por una conexión PostgreSQL y se ejecuta `prisma migrate deploy`.
