@@ -19,6 +19,9 @@ Aplicación PWA para gestionar y optimizar rutas de reparto en Mar del Plata. La
 │   │   │   └── routes/optimize/route.ts
 │   │   ├── rutas/[routeId]/page.tsx
 │   │   ├── layout.tsx
+│   │   ├── clientes/page.tsx
+│   │   ├── historico/page.tsx
+│   │   ├── historico/[routeId]/page.tsx
 │   │   ├── page.tsx
 │   │   └── globals.css
 │   ├── lib/
@@ -38,7 +41,17 @@ Aplicación PWA para gestionar y optimizar rutas de reparto en Mar del Plata. La
 └── package.json
 ```
 
-La UI operativa está en `src/app/page.tsx`. El motor de dominio queda aislado en `src/lib`, para poder usar el mismo cálculo desde API Routes y el modo offline.
+La UI operativa está en `src/app/page.tsx`. Las superficies CRM e histórico ya están creadas en `/clientes` y `/historico`; el motor de dominio queda aislado en `src/lib`, para poder usar el mismo cálculo desde API Routes y el modo offline.
+
+## Modelo de datos actual
+
+`schema.prisma` contempla:
+
+- Ficha CRM completa: CUIT, condición fiscal, facturación, contacto, geocodificación, superficie vial, estacionamiento medido, horarios, notas y cuenta corriente.
+- Rutas con métricas estimadas/reales, conductor, estado, caja, gastos y cierre histórico.
+- Entregas con secuencia, estados de incidencia, horarios reales, devoluciones y mercadería dañada.
+- Pagos, gastos en ruta, picking de salida, balances de cajones/envases y prueba de entrega.
+- `RouteHistory` para métricas consolidadas y `AuditLog` para trazabilidad de cambios.
 
 ## Optimización implementada
 

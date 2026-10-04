@@ -7,105 +7,210 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Values are stored as strings because Prisma's SQLite connector does not
+// support native enums. The canonical values are typed in src/types/domain.ts.
+
 model Customer {
-  id                String        @id @default(cuid())
-  name              String
-  businessName      String?
-  phone             String?
-  address           String
-  city              String        @default("Mar del Plata")
-  latitude          Float?
-  longitude         Float?
-  geocodedAt        DateTime?
-  zone              String?
-  deliveryWeekdays  String
-  receivingFrom     String?
-  receivingUntil    String?
-  notes             String?
-  active            Boolean       @default(true)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  deliveries        Delivery[]
+  id                    String              @id @default(cuid())
+  name                  String
+  businessName          String?
+  taxId                 String?             @unique
+  taxCondition          String?             // RESPONSABLE_INSCRIPTO, MONOTRIBUTO, EXENTO
+  invoicePreference     String?             // A, B
+  phone                 String?
+  receiverName          String?
+  address               String
+  city                  String              @default("Mar del Plata")
+  neighborhood          String?
+  latitude              Float?
+  longitude             Float?
+  geocodedAt            DateTime?
+  roadSurface           String?             // ASPHALT, GRAVEL, DIRT
+  paidParkingZone       Boolean             @default(false)
+  deliveryWeekdays      String              // MONDAY,...,SATURDAY
+  receivingFrom         String?
+  receivingUntil        String?
+  fixedNotes             String?
+  currentAccountCents   Int                 @default(0)
+  active                Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  deliveries            Delivery[]
+  containerBalances     ContainerBalance[]
 
   @@index([address])
+  @@index([neighborhood])
   @@index([deliveryWeekdays])
+  @@index([active])
 }
 
 model Route {
-  id                String        @id @default(cuid())
-  date              DateTime
-  weekday           String
-  corridor          String
-  status            String         @default("DRAFT")
-  baseName          String        @default("Italia y San Martín")
-  baseLatitude      Float         @default(-37.99917)
-  baseLongitude     Float         @default(-57.55046)
-  totalKilometers   Float?
-  estimatedMinutes  Int?
-  estimatedFuelCost Int?
-  startedAt         DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  deliveries        Delivery[]
+  id                    String              @id @default(cuid())
+  date                  DateTime
+  weekday               String
+  corridor              String
+  status                String              @default("DRAFT")
+  driverName            String?
+  baseName              String              @default("Italia y San Martín")
+  baseLatitude          Float               @default(-37.99917)
+  baseLongitude         Float               @default(-57.55046)
+  totalKilometers       Float?
+  actualKilometers      Float?
+  estimatedMinutes      Int?
+  actualMinutes         Int?
+  estimatedFuelCost     Int?
+  actualFuelCost        Int?
+  cashCollectedCents    Int                 @default(0)
+  digitalCollectedCents Int                 @default(0)
+  cashExpensesCents     Int                 @default(0)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  archivedAt            DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  deliveries            Delivery[]
+  expenses              Expense[]
+  pickingItems          PickingItem[]
+  history               RouteHistory?
+  auditLogs             AuditLog[]
 
   @@index([date, status])
+  @@index([weekday, corridor])
+  @@index([driverName, date])
 }
 
 model Delivery {
-  id                String         @id @default(cuid())
-  routeId           String?
-  customerId        String
-  sequence          Int?
-  status            String          @default("PENDING")
-  amountCents       Int            @default(0)
-  requestedDate     DateTime?
-  notes             String?
-  movedToEndAt      DateTime?
-  deliveredAt       DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  route             Route?         @relation(fields: [routeId], references: [id], onDelete: SetNull)
-  customer          Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  payment           Payment?
-  proof             ProofOfDelivery?
+  id                    String              @id @default(cuid())
+  routeId               String?
+  customerId            String
+  sequence              Int?
+  status                String              @default("PENDING")
+  amountCents           Int                 @default(0)
+  requestedDate         DateTime?
+  notes                 String?
+  movedToEndAt          DateTime?
+  plannedArrivalAt      DateTime?
+  arrivedAt             DateTime?
+  deliveredAt           DateTime?
+  incidentType          String?             // CLOSED, REJECTED_PARTIAL, REJECTED_TOTAL, NO_MONEY
+  incidentNotes         String?
+  returnedGoodsNotes    String?
+  damagedGoodsNotes     String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  route                 Route?              @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  customer              Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  payment               Payment?
+  proof                 ProofOfDelivery?
+  auditLogs             AuditLog[]
 
   @@unique([routeId, sequence])
   @@index([customerId, status])
   @@index([routeId, status])
+  @@index([plannedArrivalAt])
 }
 
 model Payment {
-  id              String        @id @default(cuid())
-  deliveryId      String        @unique
-  method          String
-  status          String        @default("PENDING")
-  amountCents     Int
-  collectedAt     DateTime?
-  reference       String?
-  notes           String?
-  delivery        Delivery      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  id                    String              @id @default(cuid())
+  deliveryId            String              @unique
+  method                String              // CASH, MERCADO_PAGO, BANK_TRANSFER, CURRENT_ACCOUNT
+  status                String              @default("PENDING")
+  amountCents           Int
+  collectedAt           DateTime?
+  reference             String?
+  notes                 String?
+  delivery              Delivery            @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
 
   @@index([method, status])
+  @@index([collectedAt])
 }
 
-model VehicleConfig {
-  id              String   @id @default(cuid())
-  name            String
-  licensePlate    String?
-  fuelType        String   @default("NAFTA_SUPER")
-  litersPer100Km  Float    @default(8.5)
-  fuelPriceCents  Int      @default(105000)
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model Expense {
+  id                    String              @id @default(cuid())
+  routeId               String
+  type                  String              // TOLL, EXTRA_FUEL, MEAL, OTHER
+  description           String?
+  amountCents           Int
+  receiptUrl            String?
+  incurredAt            DateTime            @default(now())
+  route                 Route               @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@index([routeId, type])
+  @@index([incurredAt])
+}
+
+model ContainerBalance {
+  id                    String              @id @default(cuid())
+  customerId            String
+  containerType         String              // CRATE, KEG, PALLET, OTHER
+  loanedQuantity        Int                 @default(0)
+  returnedQuantity      Int                 @default(0)
+  balanceQuantity       Int                 @default(0)
+  lastMovementAt        DateTime            @default(now())
+  notes                 String?
+  customer              Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, containerType])
+  @@index([customerId, balanceQuantity])
+}
+
+model PickingItem {
+  id                    String              @id @default(cuid())
+  routeId               String
+  description           String
+  expectedQuantity      Int
+  loadedQuantity        Int                 @default(0)
+  checkedAt             DateTime?
+  notes                 String?
+  route                 Route               @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@index([routeId, checkedAt])
 }
 
 model ProofOfDelivery {
-  id            String    @id @default(cuid())
-  deliveryId    String    @unique
-  photoUrl      String?
-  signatureData String?
-  capturedAt    DateTime  @default(now())
-  delivery      Delivery  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  id                    String              @id @default(cuid())
+  deliveryId            String              @unique
+  photoUrl              String?
+  signatureData         String?
+  capturedAt            DateTime             @default(now())
+  delivery              Delivery             @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+}
+
+model RouteHistory {
+  id                    String              @id @default(cuid())
+  routeId               String              @unique
+  date                  DateTime
+  weekday               String
+  corridor              String
+  driverName            String?
+  completedDeliveries   Int                 @default(0)
+  failedDeliveries      Int                 @default(0)
+  totalDeliveries       Int                 @default(0)
+  actualKilometers      Float?
+  actualMinutes         Int?
+  totalCollectedCents   Int                 @default(0)
+  totalExpensesCents    Int                 @default(0)
+  netCashCents          Int                 @default(0)
+  metricsJson           String?
+  createdAt             DateTime            @default(now())
+  route                 Route               @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@index([date, weekday, corridor])
+  @@index([driverName, date])
+}
+
+model AuditLog {
+  id                    String              @id @default(cuid())
+  routeId               String?
+  deliveryId            String?
+  action                String
+  actor                 String?
+  metadataJson          String?
+  createdAt             DateTime            @default(now())
+  route                 Route?              @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  delivery              Delivery?           @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
+
+  @@index([routeId, createdAt])
+  @@index([deliveryId, createdAt])
+  @@index([action, createdAt])
 }
