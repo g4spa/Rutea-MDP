@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id                String        @id @default(cuid())
+  name              String
+  businessName      String?
+  phone             String?
+  address           String
+  city              String        @default("Mar del Plata")
+  latitude          Float?
+  longitude         Float?
+  geocodedAt        DateTime?
+  zone              String?
+  deliveryWeekdays  String
+  receivingFrom     String?
+  receivingUntil    String?
+  notes             String?
+  active            Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deliveries        Delivery[]
+
+  @@index([address])
+  @@index([deliveryWeekdays])
+}
+
+model Route {
+  id                String        @id @default(cuid())
+  date              DateTime
+  weekday           String
+  corridor          String
+  status            String         @default("DRAFT")
+  baseName          String        @default("Italia y San Martín")
+  baseLatitude      Float         @default(-37.99917)
+  baseLongitude     Float         @default(-57.55046)
+  totalKilometers   Float?
+  estimatedMinutes  Int?
+  estimatedFuelCost Int?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deliveries        Delivery[]
+
+  @@index([date, status])
+}
+
+model Delivery {
+  id                String         @id @default(cuid())
+  routeId           String?
+  customerId        String
+  sequence          Int?
+  status            String          @default("PENDING")
+  amountCents       Int            @default(0)
+  requestedDate     DateTime?
+  notes             String?
+  movedToEndAt      DateTime?
+  deliveredAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  route             Route?         @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  customer          Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  payment           Payment?
+  proof             ProofOfDelivery?
+
+  @@unique([routeId, sequence])
+  @@index([customerId, status])
+  @@index([routeId, status])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  deliveryId      String        @unique
+  method          String
+  status          String        @default("PENDING")
+  amountCents     Int
+  collectedAt     DateTime?
+  reference       String?
+  notes           String?
+  delivery        Delivery      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([method, status])
+}
+
+model VehicleConfig {
+  id              String   @id @default(cuid())
+  name            String
+  licensePlate    String?
+  fuelType        String   @default("NAFTA_SUPER")
+  litersPer100Km  Float    @default(8.5)
+  fuelPriceCents  Int      @default(105000)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ProofOfDelivery {
+  id            String    @id @default(cuid())
+  deliveryId    String    @unique
+  photoUrl      String?
+  signatureData String?
+  capturedAt    DateTime  @default(now())
+  delivery      Delivery  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+}
