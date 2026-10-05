@@ -1,138 +1,158 @@
 "use client";
 
-import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
+import "leaflet/dist/leaflet.css";
+
 import { Home, MapPinned, Maximize2, Navigation } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Coordinate, RouteStop } from "@/types/routing";
 
 const BASE: Coordinate = { lat: -37.99917, lng: -57.55046 };
-const DEFAULT_CENTER = { lat: -38.005, lng: -57.55 };
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const DEFAULT_CENTER: [number, number] = [-38.005, -57.55];
+const OSRM_URL = "https://router.project-osrm.org";
 
 type RouteMapProps = {
   stops: RouteStop[];
   onOptimized?: (orderedStops: RouteStop[], distanceMeters: number, durationSeconds: number) => void;
 };
 
+type OsrmRouteResponse = {
+  code?: string;
+  routes?: Array<{
+    distance?: number;
+    duration?: number;
+    geometry?: GeoJSON.LineString;
+  }>;
+};
+
+function formatCoordinates(points: Coordinate[]) {
+  return points.map((point) => `${point.lng},${point.lat}`).join(";");
+}
+
+function numberedIcon(leaflet: typeof import("leaflet"), label: string, base = false) {
+  return leaflet.divIcon({
+    className: "",
+    html: `<span style="display:grid;place-items:center;width:28px;height:28px;border:2px solid white;border-radius:9999px;background:${base ? "#172433" : "#2476f3"};color:white;font:700 12px/1 system-ui;box-shadow:0 1px 4px #0006">${label}</span>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14]
+  });
+}
+
 export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
   const mapElement = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const rendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  const leafletRef = useRef<typeof import("leaflet") | null>(null);
+  const mapRef = useRef<import("leaflet").Map | null>(null);
+  const layersRef = useRef<import("leaflet").LayerGroup | null>(null);
   const onOptimizedRef = useRef(onOptimized);
-  const [status, setStatus] = useState<"loading" | "ready" | "missing-key" | "error">(
-    GOOGLE_MAPS_API_KEY ? "loading" : "missing-key"
-  );
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
     onOptimizedRef.current = onOptimized;
   }, [onOptimized]);
 
   useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY || !mapElement.current) return;
-    let cancelled = false;
-    setOptions({ key: GOOGLE_MAPS_API_KEY, v: "weekly" });
-    void Promise.all([importLibrary("maps"), importLibrary("routes")]).then(([mapsLibrary]) => {
-      if (cancelled || !mapElement.current) return;
-      const { Map } = mapsLibrary as google.maps.MapsLibrary;
-      mapRef.current = new Map(mapElement.current, {
-        center: DEFAULT_CENTER,
-        zoom: 12,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-        zoomControl: true
-      });
-      rendererRef.current = new google.maps.DirectionsRenderer({
-        map: mapRef.current,
-        suppressMarkers: true,
-        preserveViewport: false,
-        polylineOptions: { strokeColor: "#2476f3", strokeOpacity: 0.9, strokeWeight: 5 }
-      });
+    if (!mapElement.current || mapRef.current) return;
+
+    let disposed = false;
+    void import("leaflet").then((leaflet) => {
+      if (disposed || !mapElement.current) return;
+      const map = leaflet.map(mapElement.current, { zoomControl: true }).setView(DEFAULT_CENTER, 12);
+      leaflet.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(map);
+      leafletRef.current = leaflet;
+      mapRef.current = map;
+      layersRef.current = leaflet.layerGroup().addTo(map);
       setStatus("ready");
     }).catch(() => setStatus("error"));
 
     return () => {
-      cancelled = true;
-      rendererRef.current?.setMap(null);
-      markersRef.current.forEach((marker) => marker.setMap(null));
+      disposed = true;
+      layersRef.current = null;
+      mapRef.current?.remove();
+      mapRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    if (status !== "ready" || !mapRef.current || !rendererRef.current) return;
-    markersRef.current.forEach((marker) => marker.setMap(null));
-    markersRef.current = [];
-    rendererRef.current.setDirections(null);
+    const map = mapRef.current;
+    const layers = layersRef.current;
+    const leaflet = leafletRef.current;
+    if (status !== "ready" || !map || !layers || !leaflet) return;
 
-    const baseMarker = new google.maps.Marker({
-      map: mapRef.current,
-      position: BASE,
-      title: "Base: Italia y San Martín",
-      label: { text: "B", color: "#ffffff", fontWeight: "700" },
-      icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: "#172433", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2, scale: 12 }
-    });
-    markersRef.current.push(baseMarker);
+    layers.clearLayers();
+    leaflet.marker([BASE.lat, BASE.lng], {
+      icon: numberedIcon(leaflet, "B", true),
+      title: "Base: Italia y San Martín"
+    }).addTo(layers);
+
     if (!stops.length) {
-      mapRef.current.setCenter(DEFAULT_CENTER);
-      mapRef.current.setZoom(12);
+      map.setView(DEFAULT_CENTER, 12);
       return;
     }
 
-    const directionsService = new google.maps.DirectionsService();
-    const waypoints = stops.map((stop) => ({
-      location: { lat: stop.lat, lng: stop.lng },
-      stopover: true
-    }));
+    const controller = new AbortController();
+    const points = [BASE, ...stops, BASE];
+    const routeUrl = `${OSRM_URL}/route/v1/driving/${formatCoordinates(points)}?overview=full&geometries=geojson`;
 
-    void directionsService.route({
-      origin: BASE,
-      destination: BASE,
-      waypoints,
-      optimizeWaypoints: true,
-      travelMode: google.maps.TravelMode.DRIVING
-    }).then((result) => {
-      rendererRef.current?.setDirections(result);
-      const route = result.routes[0];
-      const waypointOrder = route?.waypoint_order || stops.map((_, index) => index);
-      const orderedStops = waypointOrder.map((index) => stops[index]).filter(Boolean);
-      const distanceMeters = route?.legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) || 0;
-      const durationSeconds = route?.legs.reduce((total, leg) => total + (leg.duration?.value || 0), 0) || 0;
-      orderedStops.forEach((stop, index) => {
-        const marker = new google.maps.Marker({
-          map: mapRef.current,
-          position: { lat: stop.lat, lng: stop.lng },
-          title: `Parada ${index + 1}: ${stop.address}`,
-          label: { text: String(index + 1), color: "#ffffff", fontWeight: "700" },
-          icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: "#2476f3", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2, scale: 12 }
+    void fetch(routeUrl, { signal: controller.signal, headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`OSRM route failed with status ${response.status}`);
+        return (await response.json()) as OsrmRouteResponse;
+      })
+      .then((payload) => {
+        if (payload.code !== "Ok") throw new Error(`OSRM returned ${payload.code || "an invalid response"}`);
+        const route = payload.routes?.[0];
+        if (!route?.geometry || route.geometry.type !== "LineString") throw new Error("OSRM route geometry is unavailable");
+
+        leaflet.geoJSON(route.geometry, {
+          style: { color: "#2476f3", weight: 5, opacity: 0.9 }
+        }).addTo(layers);
+
+        stops.forEach((stop, index) => {
+          leaflet.marker([stop.lat, stop.lng], {
+            icon: numberedIcon(leaflet, String(index + 1)),
+            title: `Parada ${index + 1}: ${stop.address}`
+          })
+            .on("click", () => {
+              window.open(
+                `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${stop.address}, Mar del Plata`)}`,
+                "_blank",
+                "noopener,noreferrer"
+              );
+            })
+            .addTo(layers);
         });
-        marker.addListener("click", () => {
-          window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stop.address + ", Mar del Plata")}`, "_blank", "noopener");
-        });
-        markersRef.current.push(marker);
+
+        const bounds = leaflet.geoJSON(route.geometry).getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] });
+        onOptimizedRef.current?.(stops, route.distance || 0, route.duration || 0);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setStatus("error");
       });
-      onOptimizedRef.current?.(orderedStops, distanceMeters, durationSeconds);
-    }).catch(() => setStatus("error"));
+
+    return () => controller.abort();
   }, [status, stops]);
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-        <div><h2 className="font-semibold">Mapa del recorrido optimizado</h2><p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><span className={`h-2 w-2 rounded-full ${status === "ready" ? "bg-emerald-500" : "bg-amber-500"}`} /> {stops.length ? `${stops.length} paradas · Google Maps Driving` : "Agregá paradas para visualizar la ruta"}</p></div>
+        <div><h2 className="font-semibold">Mapa del recorrido optimizado</h2><p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><span className={`h-2 w-2 rounded-full ${status === "ready" ? "bg-emerald-500" : "bg-amber-500"}`} /> {stops.length ? `${stops.length} paradas · OpenStreetMap / OSRM` : "Agregá paradas para visualizar la ruta"}</p></div>
         <button className="rounded-lg border border-slate-200 p-2 text-slate-400" title="Ampliar mapa"><Maximize2 size={16} /></button>
       </div>
       <div className="relative h-[330px] overflow-hidden bg-[#e9f1ef]">
-        {!GOOGLE_MAPS_API_KEY && <MapMessage icon={<MapPinned size={28} />} text="Configurá NEXT_PUBLIC_GOOGLE_MAPS_API_KEY para activar Google Maps." />}
-        {GOOGLE_MAPS_API_KEY && status === "loading" && <MapMessage icon={<MapPinned size={28} />} text="Cargando Google Maps..." />}
-        {GOOGLE_MAPS_API_KEY && status === "error" && <MapMessage icon={<MapPinned size={28} />} text="No se pudo cargar Google Maps o calcular la ruta." />}
+        {status === "loading" && <MapMessage icon={<MapPinned size={28} />} text="Cargando mapa..." />}
+        {status === "error" && <MapMessage icon={<MapPinned size={28} />} text="No se pudo calcular la ruta vial con OSRM." />}
         <div ref={mapElement} className={`h-full w-full ${status === "ready" ? "block" : "hidden"}`} />
-        <div className="absolute bottom-8 left-4 flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 text-[9px] font-bold text-white shadow"><Home size={12} /> BASE</div>
-        {stops.length > 0 && status === "ready" && <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-[10px] text-slate-600 shadow"><Navigation size={12} className="text-blue-600" /> Tocá un marcador para navegar</div>}
+        <div className="absolute bottom-8 left-4 z-[400] flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 text-[9px] font-bold text-white shadow"><Home size={12} /> BASE</div>
+        {stops.length > 0 && status === "ready" && <div className="absolute bottom-3 right-3 z-[400] flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-[10px] text-slate-600 shadow"><Navigation size={12} className="text-blue-600" /> Tocá un marcador para navegar</div>}
       </div>
     </section>
   );
 }
 
-function MapMessage({ icon, text }: { icon: React.ReactNode; text: string }) {
+function MapMessage({ icon, text }: { icon: ReactNode; text: string }) {
   return <div className="absolute inset-0 z-10 grid place-items-center text-center text-sm text-slate-500"><div><div className="mb-2 flex justify-center text-blue-500">{icon}</div><p>{text}</p></div></div>;
 }

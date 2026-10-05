@@ -68,7 +68,7 @@ Las ventanas horarias se priorizan en esta primera versión. Para garantizar cum
 
 El optimizador usa OSRM Table Service para construir costos de viaje por red vial (`duration` y `distance`) y OSRM Route Service para obtener la geometría GeoJSON real. El formato enviado a OSRM es siempre `longitud,latitud`; si OSRM no responde o no encuentra un recorrido, la API devuelve `502` y no inventa una ruta en línea recta.
 
-El visor operativo usa la API oficial de Google Maps JavaScript. Configurá `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` en `.env.local` con Maps JavaScript API y Directions API habilitadas. El componente llama `google.maps.DirectionsService` con `travelMode: DRIVING` y `optimizeWaypoints: true`, y pinta la respuesta con `google.maps.DirectionsRenderer`.
+El visor operativo usa Leaflet.js con teselas de OpenStreetMap, sin API keys. Las rutas se calculan sobre calles reales mediante OSRM Route Service y se dibujan con la geometría GeoJSON usando `L.geoJSON`; los marcadores usan coordenadas `lat,lng` de Leaflet y las peticiones a OSRM se envían como `lng,lat`. OpenStreetMap requiere mantener la atribución visible. Los servicios públicos de OSM/OSRM tienen límites de uso; para producción con alto volumen conviene usar una instancia propia o un proveedor dedicado.
 
 ## Primer arranque
 
