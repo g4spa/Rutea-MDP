@@ -6,12 +6,12 @@ import { Home, MapPinned, Maximize2, Navigation } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Coordinate, RouteStop } from "@/types/routing";
 
-const BASE: Coordinate = { lat: -37.99917, lng: -57.55046 };
 const DEFAULT_CENTER: [number, number] = [-38.005, -57.55];
 const OSRM_URL = "https://router.project-osrm.org";
 
 type RouteMapProps = {
   stops: RouteStop[];
+  base?: Coordinate | null;
   onOptimized?: (orderedStops: RouteStop[], distanceMeters: number, durationSeconds: number) => void;
 };
 
@@ -37,7 +37,7 @@ function numberedIcon(leaflet: typeof import("leaflet"), label: string, base = f
   });
 }
 
-export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
+export default function RouteMap({ stops, base, onOptimized }: RouteMapProps) {
   const mapElement = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
@@ -92,9 +92,15 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
 
     layers.clearLayers();
     map.invalidateSize({ animate: false });
-    leaflet.marker([BASE.lat, BASE.lng], {
+    if (!base) {
+      map.setView(DEFAULT_CENTER, 12);
+      requestAnimationFrame(() => map.invalidateSize({ animate: false }));
+      return;
+    }
+    const routeBase = base;
+    leaflet.marker([routeBase.lat, routeBase.lng], {
       icon: numberedIcon(leaflet, "B", true),
-      title: "Base: Italia y San Martín"
+      title: "Base de salida"
     }).addTo(layers);
 
     if (!stops.length) {
@@ -104,7 +110,7 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
     }
 
     const controller = new AbortController();
-    const points = [BASE, ...stops, BASE];
+    const points = [routeBase, ...stops, routeBase];
     const routeUrl = `${OSRM_URL}/route/v1/driving/${formatCoordinates(points)}?overview=full&geometries=geojson`;
 
     void fetch(routeUrl, { signal: controller.signal, headers: { Accept: "application/json" } })
@@ -147,7 +153,7 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
       });
 
     return () => controller.abort();
-  }, [status, stops]);
+  }, [base, status, stops]);
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

@@ -70,6 +70,12 @@ El optimizador usa OSRM Table Service para construir costos de viaje por red via
 
 El visor operativo usa Leaflet.js con teselas de OpenStreetMap, sin API keys. Las rutas se calculan sobre calles reales mediante OSRM Route Service y se dibujan con la geometría GeoJSON usando `L.geoJSON`; los marcadores usan coordenadas `lat,lng` de Leaflet y las peticiones a OSRM se envían como `lng,lat`. OpenStreetMap requiere mantener la atribución visible. Los servicios públicos de OSM/OSRM tienen límites de uso; para producción con alto volumen conviene usar una instancia propia o un proveedor dedicado.
 
+## Cuentas, base e importación de clientes
+
+La aplicación incluye acceso con email y contraseña. En el primer uso se puede crear una cuenta en `/registro`; luego se ingresa desde `/login`. La sesión se guarda en una cookie HTTP-only y las contraseñas se almacenan con hash bcrypt.
+
+La dirección de salida ya no está fija en el código: se ingresa en el planificador, se geocodifica con Nominatim y se usa como origen y retorno del recorrido. También se pueden importar archivos `.xlsx`, `.xls` o `.csv`; la primera hoja debe incluir una columna llamada `Dirección`, `Domicilio`, `Address` o `Calle`. Las filas se incorporan al cuadro de direcciones para revisarlas antes de geocodificar.
+
 ## Primer arranque
 
 ```bash
