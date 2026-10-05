@@ -15,9 +15,22 @@ export default function LoginPage() {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
-    if (!response.ok) setError(((await response.json()) as { error?: string }).error || "No se pudo iniciar sesión.");
-    else router.push("/");
+    try {
+      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const responseText = await response.text();
+      let payload: { error?: string } = {};
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText) as { error?: string };
+        } catch {
+          payload = {};
+        }
+      }
+      if (!response.ok) setError(payload.error || `No se pudo iniciar sesión (HTTP ${response.status}).`);
+      else router.push("/");
+    } catch {
+      setError("No se pudo conectar con el servidor. Verificá que el túnel siga activo.");
+    }
     setBusy(false);
   }
 
