@@ -68,6 +68,8 @@ Las ventanas horarias se priorizan en esta primera versión. Para garantizar cum
 
 El optimizador usa OSRM Table Service para construir costos de viaje por red vial (`duration` y `distance`) y OSRM Route Service para obtener la geometría GeoJSON real. El formato enviado a OSRM es siempre `longitud,latitud`; si OSRM no responde o no encuentra un recorrido, la API devuelve `502` y no inventa una ruta en línea recta.
 
+El visor operativo usa la API oficial de Google Maps JavaScript. Configurá `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` en `.env.local` con Maps JavaScript API y Directions API habilitadas. El componente llama `google.maps.DirectionsService` con `travelMode: DRIVING` y `optimizeWaypoints: true`, y pinta la respuesta con `google.maps.DirectionsRenderer`.
+
 ## Primer arranque
 
 ```bash
