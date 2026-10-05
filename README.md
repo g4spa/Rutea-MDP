@@ -66,6 +66,8 @@ La UI operativa está en `src/app/page.tsx`. Las superficies CRM e histórico ya
 
 Las ventanas horarias se priorizan en esta primera versión. Para garantizar cumplimiento estricto con llegada por horario, el siguiente paso es incorporar un solver VRPTW o una matriz de tiempos de OSRM.
 
+El optimizador usa OSRM Table Service para construir costos de viaje por red vial (`duration` y `distance`) y OSRM Route Service para obtener la geometría GeoJSON real. El formato enviado a OSRM es siempre `longitud,latitud`; si OSRM no responde o no encuentra un recorrido, la API devuelve `502` y no inventa una ruta en línea recta.
+
 ## Primer arranque
 
 ```bash

@@ -1,14 +1,16 @@
 "use client";
 
 import { Home, Maximize2, MapPinned, Navigation } from "lucide-react";
-import type { Coordinate, RouteStop } from "@/types/routing";
+import type { Coordinate, RouteStop, OptimizedRoute } from "@/types/routing";
 
 const BASE: Coordinate = { lat: -37.99917, lng: -57.55046 };
 
-export default function RouteMap({ stops }: { stops: RouteStop[] }) {
+export default function RouteMap({ stops, geometry }: { stops: RouteStop[]; geometry?: OptimizedRoute["geometry"] }) {
   const points = [BASE, ...stops, BASE];
-  const lats = points.map((point) => point.lat);
-  const lngs = points.map((point) => point.lng);
+  const geometryPoints = geometry?.coordinates.map(([lng, lat]) => ({ lat, lng })) || [];
+  const boundsPoints = geometryPoints.length ? geometryPoints : points;
+  const lats = boundsPoints.map((point) => point.lat);
+  const lngs = boundsPoints.map((point) => point.lng);
   const minLat = Math.min(...lats, BASE.lat) - 0.004;
   const maxLat = Math.max(...lats, BASE.lat) + 0.004;
   const minLng = Math.min(...lngs, BASE.lng) - 0.004;
@@ -18,7 +20,7 @@ export default function RouteMap({ stops }: { stops: RouteStop[] }) {
     y: 350 - ((point.lat - minLat) / Math.max(maxLat - minLat, 0.001)) * 300
   });
   const projected = points.map(project);
-  const routePath = projected.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  const routePath = geometryPoints.map(project).map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -30,7 +32,7 @@ export default function RouteMap({ stops }: { stops: RouteStop[] }) {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-cyan-100/30" />
         <svg viewBox="0 0 600 390" className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-label="Mapa de la ruta">
           <path d="M20 335 C140 280 160 220 280 210 S420 120 570 55" fill="none" stroke="white" strokeWidth="10" opacity=".8" />
-          {stops.length > 0 && <path d={routePath} fill="none" stroke="#2476f3" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />}
+          {routePath && <path d={routePath} fill="none" stroke="#2476f3" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />}
         </svg>
         <div className="absolute left-3 top-5 text-[9px] font-bold tracking-widest text-slate-500/70">NORTE</div><div className="absolute bottom-5 right-4 text-[9px] font-bold tracking-widest text-slate-500/70">PUERTO</div>
         {stops.length === 0 ? <div className="absolute inset-0 grid place-items-center text-center text-sm text-slate-500"><div><MapPinned className="mx-auto mb-2 text-blue-500" size={28} /><p>La ruta aparecerá acá<br />después de optimizarla.</p></div></div> : projected.slice(1, -1).map((point, index) => <a key={stops[index].id} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stops[index].address + ", Mar del Plata")}`} target="_blank" rel="noreferrer" className="absolute grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white bg-blue-600 text-[10px] font-bold text-white shadow-md transition hover:scale-125" style={{ left: `${(point.x / 600) * 100}%`, top: `${(point.y / 390) * 100}%` }} title={`Parada ${index + 1}: ${stops[index].address}`}>{index + 1}</a>)}
