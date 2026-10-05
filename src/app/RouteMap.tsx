@@ -64,6 +64,9 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
       mapRef.current = map;
       layersRef.current = leaflet.layerGroup().addTo(map);
       setStatus("ready");
+      requestAnimationFrame(() => {
+        if (!disposed) map.invalidateSize({ animate: false });
+      });
     }).catch(() => setStatus("error"));
 
     return () => {
@@ -81,6 +84,7 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
     if (status !== "ready" || !map || !layers || !leaflet) return;
 
     layers.clearLayers();
+    map.invalidateSize({ animate: false });
     leaflet.marker([BASE.lat, BASE.lng], {
       icon: numberedIcon(leaflet, "B", true),
       title: "Base: Italia y San Martín"
@@ -88,6 +92,7 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
 
     if (!stops.length) {
       map.setView(DEFAULT_CENTER, 12);
+      requestAnimationFrame(() => map.invalidateSize({ animate: false }));
       return;
     }
 
@@ -126,6 +131,7 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
 
         const bounds = leaflet.geoJSON(route.geometry).getBounds();
         if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] });
+        requestAnimationFrame(() => map.invalidateSize({ animate: false }));
         onOptimizedRef.current?.(stops, route.distance || 0, route.duration || 0);
       })
       .catch((error: unknown) => {
