@@ -56,10 +56,14 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
     void import("leaflet").then((leaflet) => {
       if (disposed || !mapElement.current) return;
       const map = leaflet.map(mapElement.current, { zoomControl: true }).setView(DEFAULT_CENTER, 12);
-      leaflet.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      const tiles = leaflet.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19
       }).addTo(map);
+      tiles.on("tileerror", () => {
+        // The canonical endpoint avoids subdomain/DNS blocks on restricted networks.
+        tiles.setUrl("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
+      });
       leafletRef.current = leaflet;
       mapRef.current = map;
       layersRef.current = leaflet.layerGroup().addTo(map);
@@ -67,6 +71,9 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
       requestAnimationFrame(() => {
         if (!disposed) map.invalidateSize({ animate: false });
       });
+      window.setTimeout(() => {
+        if (!disposed) map.invalidateSize({ animate: false });
+      }, 250);
     }).catch(() => setStatus("error"));
 
     return () => {
@@ -148,10 +155,10 @@ export default function RouteMap({ stops, onOptimized }: RouteMapProps) {
         <div><h2 className="font-semibold">Mapa del recorrido optimizado</h2><p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><span className={`h-2 w-2 rounded-full ${status === "ready" ? "bg-emerald-500" : "bg-amber-500"}`} /> {stops.length ? `${stops.length} paradas · OpenStreetMap / OSRM` : "Agregá paradas para visualizar la ruta"}</p></div>
         <button className="rounded-lg border border-slate-200 p-2 text-slate-400" title="Ampliar mapa"><Maximize2 size={16} /></button>
       </div>
-      <div className="relative h-[330px] overflow-hidden bg-[#e9f1ef]">
+      <div className="route-map-shell relative h-[330px] overflow-hidden bg-[#e9f1ef]">
         {status === "loading" && <MapMessage icon={<MapPinned size={28} />} text="Cargando mapa..." />}
         {status === "error" && <MapMessage icon={<MapPinned size={28} />} text="No se pudo calcular la ruta vial con OSRM." />}
-        <div ref={mapElement} className={`h-full w-full ${status === "ready" ? "block" : "hidden"}`} />
+        <div ref={mapElement} className={`route-map-container h-full w-full ${status === "ready" ? "block" : "hidden"}`} />
         <div className="absolute bottom-8 left-4 z-[400] flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 text-[9px] font-bold text-white shadow"><Home size={12} /> BASE</div>
         {stops.length > 0 && status === "ready" && <div className="absolute bottom-3 right-3 z-[400] flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-[10px] text-slate-600 shadow"><Navigation size={12} className="text-blue-600" /> Tocá un marcador para navegar</div>}
       </div>

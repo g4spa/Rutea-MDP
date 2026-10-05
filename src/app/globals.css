@@ -5,3 +5,19 @@
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; }
+
+/* Keep Leaflet's tile pane above the map background and reset Tailwind's img defaults. */
+.route-map-container,
+.route-map-container .leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+.route-map-container .leaflet-tile-pane {
+  z-index: 200;
+}
+.route-map-container .leaflet-tile {
+  max-width: none;
+  max-height: none;
+  width: 256px;
+  height: 256px;
+}
