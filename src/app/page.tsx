@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, CloudOff, Fuel, MapPin, Navigation, Plus, Route, Sparkles, Truck } from "lucide-react";
+import { Check, CloudOff, Fuel, MapPin, Navigation, Plus, Route, Sparkles, Truck, History } from "lucide-react";
+import Link from "next/link";
 import * as XLSX from "xlsx";
 import { flushMutations, queueMutation } from "@/lib/offline-db";
 import type { OptimizedRoute, RouteStop } from "@/types/routing";
@@ -23,6 +24,7 @@ export default function HomePage() {
   const [googleOrder, setGoogleOrder] = useState<RouteStop[] | null>(null);
   const [baseAddress, setBaseAddress] = useState("");
   const [base, setBase] = useState<{ lat: number; lng: number } | null>(null);
+  const [visitedIds, setVisitedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setOnline(navigator.onLine);
@@ -128,13 +130,36 @@ export default function HomePage() {
   }
 
   async function markDelivered(stop: RouteStop) {
+    setVisitedIds((current) => new Set(current).add(stop.id));
     const body = { deliveryId: stop.id, status: "DELIVERED", deliveredAt: new Date().toISOString() };
     if (!navigator.onLine) {
       await queueMutation({ url: "/api/deliveries", method: "PATCH", body });
       setMessage("Guardado sin conexión. Se sincronizará al recuperar señal.");
       return;
     }
+
     setMessage(`Entrega marcada: ${stop.address}`);
+  }
+
+  async function saveWorkedDay() {
+    if (!stops.length) {
+      setMessage("Agregá al menos una parada antes de guardar la jornada.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch("/api/work-days", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stops: (route?.orderedStops || stops).map((stop) => ({ ...stop, status: visitedIds.has(stop.id) ? "VISITED" : "NOT_VISITED" })) })
+      });
+      if (!response.ok) throw new Error("No se pudo guardar la jornada.");
+      setMessage("Jornada guardada correctamente. Podés consultarla en el historial.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo guardar la jornada.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -142,7 +167,7 @@ export default function HomePage() {
       <header className="border-b border-slate-200 bg-slate-950 text-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3"><span className="rounded-xl bg-blue-500 p-2"><Route size={20} /></span><div><strong className="font-mono text-xl">rutea</strong><span className="ml-2 text-[10px] tracking-[.2em] text-slate-400">MAR DEL PLATA</span></div></div>
-          <div className="flex items-center gap-2 text-xs text-slate-300">{online ? <><span className="h-2 w-2 rounded-full bg-emerald-400" /> En línea</> : <><CloudOff size={15} /> Sin conexión</>}</div>
+          <div className="flex items-center gap-3 text-xs text-slate-300">{online ? <><span className="h-2 w-2 rounded-full bg-emerald-400" /> En línea</> : <><CloudOff size={15} /> Sin conexión</>}<Link href="/historico" className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 hover:bg-white/20"><History size={14} /> Historial</Link></div>
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6">
@@ -152,7 +177,7 @@ export default function HomePage() {
             <RouteMap stops={route?.orderedStops || stops} base={base} onOptimized={(orderedStops) => setGoogleOrder(orderedStops)} />
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-start justify-between"><div><h2 className="font-semibold">Base de salida</h2><p className="mt-1 text-xs text-slate-500">Ingresá la dirección real del depósito o punto de partida.</p></div><span className="rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-400">01</span></div><input value={baseAddress} onChange={(event) => { setBaseAddress(event.target.value); setBase(null); }} placeholder="Ej. Av. Independencia 2500, Mar del Plata" className="w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></div>
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-start justify-between"><div><h2 className="font-semibold">Cargar direcciones</h2><p className="mt-1 text-xs text-slate-500">Pegá direcciones o importá una planilla Excel/CSV.</p></div><label className="cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Importar<input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importSpreadsheet(file); event.currentTarget.value = ""; }} /></label></div><textarea value={input} onChange={(event) => setInput(event.target.value)} rows={5} placeholder={"Av. Constitución 5400\nGüemes 2850\nLa Rioja 1800"} className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><span className="flex items-center gap-1 text-xs text-slate-400"><Sparkles size={14} className="text-amber-500" /> Se busca una columna Dirección, Domicilio o Address.</span><button onClick={addAddresses} disabled={busy} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"><Plus size={16} /> {busy ? "Procesando..." : "Agregar"}</button></div></div>
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold">Paradas de la ruta <span className="ml-1 rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-600">{stops.length}</span></h2><p className="mt-1 text-xs text-slate-500">{route ? `${route.orderedStops.length} paradas ordenadas · retorno a base incluido` : "Todavía no optimizaste el recorrido."}</p></div><button onClick={optimize} disabled={busy || !stops.length} className="flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"><Sparkles size={14} /> {busy ? "Calculando..." : "Optimizar orden"}</button></div>{stops.length ? <div className="divide-y divide-slate-100">{(googleOrder || route?.orderedStops || stops).map((stop, index) => <div key={stop.id} className="flex items-center gap-3 py-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{index + 1}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{stop.address}</p><p className="text-xs text-slate-400">Mar del Plata · parada {index + 1}</p></div><button onClick={() => markDelivered(stop)} className="rounded-md p-2 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600" title="Marcar entregado"><Check size={17} /></button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stop.address + ", Mar del Plata")}`} target="_blank" rel="noreferrer" className="rounded-md p-2 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600" title="Navegar"><Navigation size={16} /></a></div>)}</div> : <div className="rounded-lg bg-slate-50 py-12 text-center text-sm text-slate-400"><MapPin className="mx-auto mb-2" size={24} />Tu ruta está vacía.</div>}</div>
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold">Paradas de la ruta <span className="ml-1 rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-600">{stops.length}</span></h2><p className="mt-1 text-xs text-slate-500">{route ? `${route.orderedStops.length} paradas ordenadas · retorno a base incluido` : "Todavía no optimizaste el recorrido."}</p></div><div className="flex gap-2"><button onClick={saveWorkedDay} disabled={busy || !stops.length} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Guardar jornada</button><button onClick={optimize} disabled={busy || !stops.length} className="flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"><Sparkles size={14} /> {busy ? "Calculando..." : "Optimizar orden"}</button></div></div>{stops.length ? <div className="divide-y divide-slate-100">{(googleOrder || route?.orderedStops || stops).map((stop, index) => <div key={stop.id} className="flex items-center gap-3 py-3"><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold ${visitedIds.has(stop.id) ? "bg-emerald-100 text-emerald-700" : "bg-blue-50 text-blue-600"}`}>{index + 1}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{stop.address}</p><p className="text-xs text-slate-400">{visitedIds.has(stop.id) ? "Visitado" : "Pendiente"} · parada {index + 1}</p></div><button onClick={() => markDelivered(stop)} className="rounded-md p-2 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600" title="Marcar visitado"><Check size={17} /></button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stop.address + ", Mar del Plata")}`} target="_blank" rel="noreferrer" className="rounded-md p-2 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600" title="Navegar"><Navigation size={16} /></a></div>)}</div> : <div className="rounded-lg bg-slate-50 py-12 text-center text-sm text-slate-400"><MapPin className="mx-auto mb-2" size={24} />Tu ruta está vacía.</div>}</div>
           </section>
           <aside className="space-y-5">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold">Resumen de ruta</h2><p className="mt-1 text-xs text-slate-500">Estimación con velocidad urbana</p></div><Fuel className="text-blue-600" size={20} /></div><div className="grid grid-cols-2 gap-3"><Metric label="Distancia" value={route ? `${formatNumber(route.totalKilometers)} km` : "0,0 km"} /><Metric label="Tiempo" value={route ? `${route.estimatedMinutes} min` : "0 min"} /><Metric label="Combustible" value={route ? `${formatNumber(route.fuelLiters)} L` : "0,0 L"} /><Metric label="Costo" value={route ? `$ ${(route.fuelCostCents / 100).toLocaleString("es-AR")}` : "$ 0"} /></div></div>

@@ -17,6 +17,7 @@ model User {
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
   imports      CustomerImport[]
+  workedDays   WorkedDay[]
 }
 
 model Session {
@@ -39,6 +40,34 @@ model CustomerImport {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+model WorkedDay {
+  id          String          @id @default(cuid())
+  userId      String
+  workedDate  DateTime
+  totalStops  Int             @default(0)
+  completedStops Int          @default(0)
+  createdAt   DateTime        @default(now())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stops       WorkedDayStop[]
+
+  @@unique([userId, workedDate])
+  @@index([userId, workedDate])
+}
+
+model WorkedDayStop {
+  id         String    @id @default(cuid())
+  workedDayId String
+  sequence   Int
+  address    String
+  latitude   Float?
+  longitude  Float?
+  status     String    @default("NOT_VISITED")
+  workedDay  WorkedDay @relation(fields: [workedDayId], references: [id], onDelete: Cascade)
+
+  @@unique([workedDayId, sequence])
+  @@index([workedDayId, status])
 }
 
 // Values are stored as strings because Prisma's SQLite connector does not
