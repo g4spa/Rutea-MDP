@@ -19,6 +19,9 @@ Aplicación PWA para gestionar y optimizar rutas de reparto en Mar del Plata. La
 │   │   │   └── routes/optimize/route.ts
 │   │   ├── rutas/[routeId]/page.tsx
 │   │   ├── layout.tsx
+│   │   ├── clientes/page.tsx
+│   │   ├── historico/page.tsx
+│   │   ├── historico/[routeId]/page.tsx
 │   │   ├── page.tsx
 │   │   └── globals.css
 │   ├── lib/
@@ -38,7 +41,17 @@ Aplicación PWA para gestionar y optimizar rutas de reparto en Mar del Plata. La
 └── package.json
 ```
 
-La UI operativa está en `src/app/page.tsx`. El motor de dominio queda aislado en `src/lib`, para poder usar el mismo cálculo desde API Routes y el modo offline.
+La UI operativa está en `src/app/page.tsx`. Las superficies CRM e histórico ya están creadas en `/clientes` y `/historico`; el motor de dominio queda aislado en `src/lib`, para poder usar el mismo cálculo desde API Routes y el modo offline.
+
+## Modelo de datos actual
+
+`schema.prisma` contempla:
+
+- Ficha CRM completa: CUIT, condición fiscal, facturación, contacto, geocodificación, superficie vial, estacionamiento medido, horarios, notas y cuenta corriente.
+- Rutas con métricas estimadas/reales, conductor, estado, caja, gastos y cierre histórico.
+- Entregas con secuencia, estados de incidencia, horarios reales, devoluciones y mercadería dañada.
+- Pagos, gastos en ruta, picking de salida, balances de cajones/envases y prueba de entrega.
+- `RouteHistory` para métricas consolidadas y `AuditLog` para trazabilidad de cambios.
 
 ## Optimización implementada
 
@@ -53,6 +66,16 @@ La UI operativa está en `src/app/page.tsx`. El motor de dominio queda aislado e
 
 Las ventanas horarias se priorizan en esta primera versión. Para garantizar cumplimiento estricto con llegada por horario, el siguiente paso es incorporar un solver VRPTW o una matriz de tiempos de OSRM.
 
+El optimizador usa OSRM Table Service para construir costos de viaje por red vial (`duration` y `distance`) y OSRM Route Service para obtener la geometría GeoJSON real. El formato enviado a OSRM es siempre `longitud,latitud`; si OSRM no responde o no encuentra un recorrido, la API devuelve `502` y no inventa una ruta en línea recta.
+
+El visor operativo usa Leaflet.js con teselas de OpenStreetMap, sin API keys. Las rutas se calculan sobre calles reales mediante OSRM Route Service y se dibujan con la geometría GeoJSON usando `L.geoJSON`; los marcadores usan coordenadas `lat,lng` de Leaflet y las peticiones a OSRM se envían como `lng,lat`. OpenStreetMap requiere mantener la atribución visible. Los servicios públicos de OSM/OSRM tienen límites de uso; para producción con alto volumen conviene usar una instancia propia o un proveedor dedicado.
+
+## Cuentas, base e importación de clientes
+
+La aplicación incluye acceso con email y contraseña. En el primer uso se puede crear una cuenta en `/registro`; luego se ingresa desde `/login`. La sesión se guarda en una cookie HTTP-only y las contraseñas se almacenan con hash bcrypt.
+
+La dirección de salida ya no está fija en el código: se ingresa en el planificador, se geocodifica con Nominatim y se usa como origen y retorno del recorrido. También se pueden importar archivos `.xlsx`, `.xls` o `.csv`; la primera hoja debe incluir una columna llamada `Dirección`, `Domicilio`, `Address` o `Calle`. Las filas se incorporan al cuadro de direcciones para revisarlas antes de geocodificar.
+
 ## Primer arranque
 
 ```bash
@@ -64,3 +87,72 @@ npm run dev
 ```
 
 Para producción se reemplaza `DATABASE_URL` por una conexión PostgreSQL y se ejecuta `prisma migrate deploy`.
+
+## Probar desde un teléfono con datos móviles
+
+La aplicación usa rutas relativas (`/api/...`), por lo que el frontend funciona desde el dominio HTTPS del túnel sin cambiar URLs a `localhost`.
+
+### Opción recomendada: Cloudflare Quick Tunnel
+
+Instalar `cloudflared` en Windows con WinGet:
+
+```powershell
+winget install --id Cloudflare.cloudflared
+```
+
+Alternativamente, con Chocolatey:
+
+```powershell
+choco install cloudflared
+```
+
+Abrir dos terminales en la raíz del proyecto:
+
+**Terminal 1 - Next.js:**
+
+```powershell
+npm run dev:public
+```
+
+**Terminal 2 - túnel HTTPS:**
+
+```powershell
+npm run tunnel
+```
+
+`cloudflared` mostrará una línea similar a:
+
+```text
+INF Your quick Tunnel has been created! Visit it at https://random-name.trycloudflare.com
+```
+
+Abrí esa URL `https://...trycloudflare.com` desde el navegador del teléfono usando 4G/5G. No cierres ninguna de las dos terminales mientras estés probando.
+
+### Alternativa: ngrok
+
+```powershell
+winget install --id Ngrok.Ngrok
+ngrok config add-authtoken TU_TOKEN
+```
+
+Luego:
+
+```powershell
+# Terminal 1
+npm run dev:public
+
+# Terminal 2
+npm run tunnel:ngrok
+```
+
+Usá la URL `Forwarding https://...ngrok-free.app -> http://localhost:3000` que imprime ngrok.
+
+### Verificación rápida
+
+Antes de abrirlo en el teléfono, verificá en la PC:
+
+```powershell
+Invoke-WebRequest http://localhost:3000
+```
+
+Debe responder `200`. Si el túnel arranca pero la página no carga, confirmá que Next.js siga ejecutándose en la Terminal 1 y que estés usando la URL HTTPS, no `localhost`.

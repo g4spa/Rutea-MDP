@@ -19,9 +19,18 @@ export type VehicleSettings = {
 
 export type OptimizedRoute = {
   orderedStops: RouteStop[];
-  legs: Array<{ fromId: string; toId: string; kilometers: number }>;
+  legs: Array<{ fromId: string; toId: string; kilometers: number; seconds: number }>;
   totalKilometers: number;
   estimatedMinutes: number;
   fuelLiters: number;
   fuelCostCents: number;
+  geometry: {
+    type: "LineString";
+    coordinates: [number, number][];
+  };
+};
+
+export type OsrmTable = {
+  distances: number[][];
+  durations: number[][];
 };

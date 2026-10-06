@@ -24,11 +24,11 @@ const requestSchema = z.object({
 export async function POST(request: Request) {
   try {
     const body = requestSchema.parse(await request.json());
-    return NextResponse.json(optimizeRoute(body.base, body.stops, body.vehicle));
+    return NextResponse.json(await optimizeRoute(body.base, body.stops, body.vehicle));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Datos de ruta inválidos", details: error.flatten() }, { status: 400 });
     }
-    return NextResponse.json({ error: "No se pudo optimizar la ruta" }, { status: 500 });
+    return NextResponse.json({ error: "No se pudo obtener una ruta vial desde OSRM" }, { status: 502 });
   }
 }
